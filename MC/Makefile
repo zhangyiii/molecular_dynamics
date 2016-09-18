@@ -1,19 +1,9 @@
 
-# This is a GNU Makefile.
-
-# It can be used to compile an OpenCL program with
-# the Altera Beta OpenCL Development Kit.
-# See README.txt for more information.
-
-
 # You must configure ALTERAOCLSDKROOT to point the root directory of the Altera SDK for OpenCL
 # software installation.
-# See doc/getting_started.txt for more information on installing and
-# configuring the Altera SDK for OpenCL.
 
-
-# Creating a static library
 TARGET = MCHost
+TARGET_GPU = MCHost_GPU
 
 # Where is the Altera SDK for OpenCL software?
 ifeq ($(wildcard $(ALTERAOCLSDKROOT)),)
@@ -23,7 +13,6 @@ ifeq ($(wildcard $(ALTERAOCLSDKROOT)/host/include/CL/opencl.h),)
 $(error Set ALTERAOCLSDKROOT to the root directory of the Altera SDK for OpenCL software installation.)
 endif
 
-# Libraries to use, objects to compile
 SRCS = main.cpp
 SRCS_FILES = $(foreach F, $(SRCS), host/src/$(F))
 COMMON_FILES = ../common/src/AOCL_Utils.cpp
@@ -32,15 +21,22 @@ COMMON_FILES = ../common/src/AOCL_Utils.cpp
 CROSS-COMPILE = arm-linux-gnueabihf-
 
 # OpenCL compile and link flags.
-AOCL_COMPILE_CONFIG=$(shell aocl compile-config --arm) -I../common/inc 
-AOCL_LINK_CONFIG=$(shell aocl link-config --arm) 
+AOCL_COMPILE_CONFIG=$(shell aocl compile-config --arm) -I../common/inc
+AOCL_LINK_CONFIG=$(shell aocl link-config --arm)
 
+
+#GPU COMPILATION
+SRCS_GPU = nvidia.cpp
+SRCS_FILES_GPU = $(foreach F, $(SRCS_GPU), host/src/$(F))
+GPU_INCLUDE = "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v7.5\include"
+GPU_LIB = "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v7.5\lib\Win32"
 
 # Make it all!
-all : 
+all :
 	$(CROSS-COMPILE)g++ $(SRCS_FILES) $(COMMON_FILES) -o $(TARGET)  $(AOCL_COMPILE_CONFIG) $(AOCL_LINK_CONFIG)
 
-
+gpu :
+	g++ $(SRCS_FILES_GPU) -I $(GPU_INCLUDE) -L $(GPU_LIB) -o $(TARGET_GPU) -lOpenCL
 # Standard make targets
 clean :
 	@rm -f *.o $(TARGET)
