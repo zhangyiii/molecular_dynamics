@@ -26,17 +26,15 @@ AOCL_LINK_CONFIG=$(shell aocl link-config --arm)
 
 
 #GPU COMPILATION
-SRCS_GPU = nvidia.cpp
-SRCS_FILES_GPU = $(foreach F, $(SRCS_GPU), host/src/$(F))
 GPU_INCLUDE = "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v7.5\include"
 GPU_LIB = "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v7.5\lib\Win32"
 
 # Make it all!
 all :
-	$(CROSS-COMPILE)g++ $(SRCS_FILES) $(COMMON_FILES) -o $(TARGET)  $(AOCL_COMPILE_CONFIG) $(AOCL_LINK_CONFIG)
+	$(CROSS-COMPILE)g++ -D ALTERA $(SRCS_FILES) $(COMMON_FILES) -o $(TARGET)  $(AOCL_COMPILE_CONFIG) $(AOCL_LINK_CONFIG)
 
 gpu :
-	g++ $(SRCS_FILES_GPU) -I $(GPU_INCLUDE) -L $(GPU_LIB) -o $(TARGET_GPU) -lOpenCL
+	g++ $(SRCS_FILES) -I $(GPU_INCLUDE) -L $(GPU_LIB) -o $(TARGET_GPU) -lOpenCL
 # Standard make targets
 clean :
 	@rm -f *.o $(TARGET)
