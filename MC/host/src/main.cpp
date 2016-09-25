@@ -2,7 +2,21 @@
 #include <stdlib.h>
 #include <math.h>
 #include "CL/opencl.h"
-#include "AOCL_Utils.h"
+#include <time.h>
+#ifdef ALTERA
+    #include "AOCL_Utils.h"
+    using namespace aocl_utils;
+#else
+    #include <string.h>
+    #include "CL/cl.h"
+    #define MAX_PLATFORMS_COUNT 2
+    void checkError(cl_int err, const char *operation){
+        if (err != CL_SUCCESS){
+            fprintf(stderr, "Error during operation '%s': %d\n", operation, err);
+            exit(1);
+        }
+    }
+#endif
 
 #define rc 3
 #define box_size 6
@@ -11,8 +25,6 @@
 #define total_it 40000
 #define T 1.3
 #define initial_dist_by_one_axis 1.2
-
-using namespace aocl_utils;
 
 // OpenCL runtime configuration
 cl_platform_id platform = NULL;
@@ -27,7 +39,8 @@ cl_mem output_buf;
 // Problem data(positions and energy)
 cl_float3 input_a[N] = {};
 float output[N * N] = {};
-double total_kernel_time = 0.;
+float max_deviation = 0.005;
+double kernel_total_time = 0.;
 
 // Function prototypes
 bool init_opencl();
@@ -36,11 +49,10 @@ void run();
 void cleanup();
 void mc();
 float calculate_energy_lj();
-float max_deviation = 0.005;
 
 // Entry point.
 int main() {
-    const double start_time = getCurrentTimestamp();
+    time_t start_total_time = time(NULL);
     // Initialize OpenCL.
     if(!init_opencl()) {
       return -1;
@@ -50,10 +62,9 @@ int main() {
     mc();
     // Free the resources allocated
     cleanup();
-    const double end_time = getCurrentTimestamp();
-    printf("\nTime: %0.3f ms\n", (end_time - start_time) * 1e3);
-    printf("Kernel total time : %0.3f ms\n", double(total_kernel_time) * 1e-6);
-
+    time_t end_total_time = time(NULL);
+    printf("\nTotal execution time in seconds =  %f\n", difftime(end_total_time, start_total_time));
+    printf("\nKernel execution time in milliseconds = %0.3f ms\n", (kernel_total_time / 1000000.0) );
     return 0;
 }
 
@@ -64,37 +75,72 @@ bool init_opencl() {
     cl_int status;
 
     printf("Initializing OpenCL\n");
-
-    if(!setCwdToExeDir()) {
-      return false;
-    }
-
-    // Get the OpenCL platform.
-    platform = findPlatform("Altera");
+    #ifdef ALTERA
+        if(!setCwdToExeDir()) {
+          return false;
+        }
+        platform = findPlatform("Altera");
+    #else
+        cl_uint num_platforms;
+        cl_platform_id pls[MAX_PLATFORMS_COUNT];
+        clGetPlatformIDs(MAX_PLATFORMS_COUNT, pls, &num_platforms);
+        char vendor[128];
+        for (int i = 0; i < MAX_PLATFORMS_COUNT; i++){
+            clGetPlatformInfo (pls[i], CL_PLATFORM_VENDOR, sizeof(vendor), vendor, NULL);
+            if (!strcmp("NVIDIA Corporation", vendor))
+            {
+                platform = pls[i];
+                break;
+            }
+        }
+    #endif
     if(platform == NULL) {
-      printf("ERROR: Unable to find Altera OpenCL platform.\n");
+      printf("ERROR: Unable to find OpenCL platform.\n");
       return false;
     }
 
-    // Query the available OpenCL device.
-    scoped_array<cl_device_id> devices;
-    cl_uint num_devices;
+    #ifdef ALTERA
+        scoped_array<cl_device_id> devices;
+        cl_uint num_devices;
+        devices.reset(getDevices(platform, CL_DEVICE_TYPE_ALL, &num_devices));
+        // We'll just use the first device.
+        device = devices[0];
+    #else
+        cl_uint num_devices;
+        clGetDeviceIDs(platform, CL_DEVICE_TYPE_GPU , 1, &device, &num_devices);
+    #endif
 
-    devices.reset(getDevices(platform, CL_DEVICE_TYPE_ALL, &num_devices));
-
-    // We'll just use the first device.
-    device = devices[0];
-
-    // Create the context.
     context = clCreateContext(NULL, 1, &device, NULL, NULL, &status);
     checkError(status, "Failed to create context");
 
     queue = clCreateCommandQueue(context, device, CL_QUEUE_PROFILING_ENABLE, &status);
     checkError(status, "Failed to create command queue");
 
-    std::string binary_file = getBoardBinaryFile("mc", device);
-    printf("Using AOCX: %s\n", binary_file.c_str());
-    program = createProgramFromBinary(context, binary_file.c_str(), &device, 1);
+    #ifdef ALTERA
+        std::string binary_file = getBoardBinaryFile("mc", device);
+        printf("Using AOCX: %s\n", binary_file.c_str());
+        program = createProgramFromBinary(context, binary_file.c_str(), &device, 1);
+    #else
+        int MAX_SOURCE_SIZE  = 65536;
+        FILE *fp;
+        const char fileName[] = "./device/mc.cl";
+        size_t source_size;
+        char *source_str;
+        try {
+            fp = fopen(fileName, "r");
+            if (!fp) {
+                fprintf(stderr, "Failed to load kernel.\n");
+                exit(1);
+            }
+            source_str = (char *)malloc(MAX_SOURCE_SIZE);
+            source_size = fread(source_str, 1, MAX_SOURCE_SIZE, fp);
+            fclose(fp);
+        }
+        catch (int a) {
+            printf("%f", a);
+        }
+        program = clCreateProgramWithSource(context, 1, (const char **)&source_str, (const size_t *)&source_size, &status);
+    #endif
 
     // Build the program that was just created.
     status = clBuildProgram(program, 0, NULL, "", NULL, NULL);
@@ -197,11 +243,10 @@ void mc() {
 }
 void run() {
     cl_int status;
-
-    // Launch the problem for each device.
     cl_event kernel_event;
     cl_event finish_event;
-
+    cl_ulong time_start, time_end;
+    double total_time;
     // Each of the host buffers supplied to
     // clEnqueueWriteBuffer here is already aligned to ensure that DMA is used
     // for the host-to-device transfer.
@@ -216,10 +261,10 @@ void run() {
     size_t global_work_size[2] = {32, 32};
     size_t local_work_size[2] = {32, 32};
     status = clSetKernelArg(kernel, argi++, sizeof(cl_mem), &input_a_buf);
-    checkError(status, "Failed to set argument %d", argi - 1);
+    checkError(status, "Failed to set argument input_a");
 
     status = clSetKernelArg(kernel, argi++, sizeof(cl_mem), &output_buf);
-    checkError(status, "Failed to set argument %d", argi - 1);
+    checkError(status, "Failed to set argument output");
 
     status = clEnqueueNDRangeKernel(queue, kernel, 2, NULL,
         global_work_size, local_work_size, 1, &write_event, &kernel_event);
@@ -235,8 +280,10 @@ void run() {
     // Wait for all devices to finish.
     clWaitForEvents(1, &finish_event);
 
-    cl_ulong time_ns = getStartEndTime(kernel_event);
-    total_kernel_time += time_ns;
+    clGetEventProfilingInfo(kernel_event, CL_PROFILING_COMMAND_START, sizeof(time_start), &time_start, NULL);
+    clGetEventProfilingInfo(kernel_event, CL_PROFILING_COMMAND_END, sizeof(time_end), &time_end, NULL);
+    total_time = time_end - time_start;
+    kernel_total_time += total_time;
 
     // Release all events.
     clReleaseEvent(kernel_event);
