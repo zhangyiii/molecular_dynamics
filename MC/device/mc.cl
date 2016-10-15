@@ -1,6 +1,8 @@
 #define size 32
 #define rc 3
 
+__attribute__((num_simd_work_items(1)))
+__attribute__((num_compute_units(4)))
 __attribute__((reqd_work_group_size(size, size, 1)))
 __kernel void mc(__global const float3 *restrict particles,
                  __global float *restrict out) {
@@ -13,7 +15,8 @@ __kernel void mc(__global const float3 *restrict particles,
         uint index = index1 * size + index2;
         float r6 = sq_dist * sq_dist * sq_dist;
         float r12 = r6 * r6;
-        out[index] = 4 * (1 / r12 - 1 / r6);
+        float energy = 4 * (1 / r12 - 1 / r6);
+        out[index] = energy;
     }
 }
 
