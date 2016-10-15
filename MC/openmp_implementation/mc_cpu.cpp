@@ -7,14 +7,14 @@
 #include <string.h>
 
 #define rc 3
-#define box_size 7
+#define box_size 6
 #define N 32
-#define nmax 30000
-#define total_it 60000
+#define nmax 60000
+#define total_it 120000
 #define T 1.3
 #define initial_dist_by_one_axis 1.2
 
-#define NUM_THREADS 4
+#define NUM_THREADS 8
 
 struct dim {
     double x;
@@ -51,11 +51,11 @@ int main()
 
 void set_initial_state(dim *array) {
     int count = 0;
-    for (double i = 1.1; i < box_size - 1.1; i += initial_dist_by_one_axis) {
-        for (double j = 1.1; j < box_size - 1.1; j += initial_dist_by_one_axis) {
-            for (double l = 1.1; l < box_size - 1.1; l += initial_dist_by_one_axis) {
+    for (double i = 1; i < box_size - 1; i += initial_dist_by_one_axis) {
+        for (double j = 1; j < box_size - 1; j += initial_dist_by_one_axis) {
+            for (double l = 1; l < box_size - 1; l += initial_dist_by_one_axis) {
                 if( count == N){
-                    return; //it is not balanced grid but we can use it 
+                    return; //it is not balanced grid but we can use it
                 }
                 array[count] = { i,j,l };
                 count++;
@@ -118,16 +118,6 @@ void mc_method(dim *array) {
     int good_iter_hung = 0;
     double u1 = calculate_energy_lj(array);
     while (1) {
-        if ((i % 100 == 0) && (i != 0)) {
-            if ( good_iter_hung > 55 ){
-                max_deviation  /=2;
-            }
-            if (good_iter_hung < 45 )
-            {
-                max_deviation *= 2;
-            }
-            good_iter_hung = 0;
-        }
         if ((good_iter == nmax) || (i == total_it)) {
             printf("\nenergy is %f \ngood iters percent %f \n", energy_ar[good_iter-1]/N, (float)good_iter/(float)total_it);
             break;
