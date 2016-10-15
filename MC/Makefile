@@ -34,7 +34,6 @@ GPU_LIB = "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v7.5\lib\Win32"
 SRCS_CPU = mc_cpu.cpp
 SRCS_CPU_FILES = $(foreach F, $(SRCS_CPU), openmp_implementation/$(F))
 
-# Make it all!
 all :
 	$(CROSS-COMPILE)g++ -D ALTERA $(SRCS_FILES) $(COMMON_FILES) -o $(TARGET)  $(AOCL_COMPILE_CONFIG) $(AOCL_LINK_CONFIG)
 
@@ -42,7 +41,7 @@ gpu :
 	g++ $(SRCS_FILES) -I $(GPU_INCLUDE) -L $(GPU_LIB) -o $(TARGET_GPU) -lOpenCL
 
 cpu :
-	g++ $(SRCS_CPU_FILES) -o $(TARGET_CPU) -fopenmp
+	g++ $(SRCS_CPU_FILES) -O3 -o $(TARGET_CPU) -fopenmp
 # Standard make targets
 clean :
 	@rm -f *.o $(TARGET)
