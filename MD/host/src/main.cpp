@@ -232,8 +232,8 @@ void run() {
     // Set kernel arguments.
     unsigned argi = 0;
 
-    size_t global_work_size[2] = {32, 32};
-    size_t local_work_size[2] = {32, 32};
+    size_t global_work_size[2] = {N, N};
+    size_t local_work_size[2] = {N, N};
     status = clSetKernelArg(kernel, argi++, sizeof(cl_mem), &input_a_buf);
     checkError(status, "Failed to set argument input_a");
 
