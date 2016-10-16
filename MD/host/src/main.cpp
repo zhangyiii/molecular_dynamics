@@ -275,7 +275,10 @@ void motion(){
     int particle_number = 0;
     cl_float3 force = (cl_float3) {0, 0, 0};
     for (int i = 0; i < N * N; i++) {
-        if ((!(count % (N-1))) && (count)){
+        force = (cl_float3) {output_force[i].x + force.x,
+            output_force[i].y + force.y,
+            output_force[i].z + force.z};
+        if (count == N - 1){
             velocity[particle_number] = (cl_float3) {velocity[particle_number].x + force.x * dt,
                 velocity[particle_number].y + force.y * dt,
                 velocity[particle_number].z + force.z * dt};
@@ -287,9 +290,6 @@ void motion(){
             count = 0;
         }
         count++;
-        force = (cl_float3) {output_force[i].x + force.x,
-            output_force[i].y + force.y,
-            output_force[i].z + force.z};
     }
 
 }
