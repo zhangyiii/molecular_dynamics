@@ -7,13 +7,13 @@
 #include <string.h>
 
 #define rc 3
-#define box_size 7
-#define N 32
-#define total_it 10000
+#define box_size 9
+#define N 64
+#define total_it 100000
 #define dt 0.0005
 #define initial_dist_by_one_axis 1.5
 
-#define NUM_THREADS 8
+#define NUM_THREADS 2
 
 struct dim {
     double x;
@@ -56,7 +56,7 @@ void set_initial_state(dim *array, dim *velocity, dim *force) {
     int count = 0;
     for (double i = 0.5; i < box_size - 0.5; i += initial_dist_by_one_axis) {
         for (double j = 0.5; j < box_size - 0.5; j += initial_dist_by_one_axis) {
-            for (double l = 0.5; l < box_size - 0.5 ; l += initial_dist_by_one_axis) {
+            for (double l = 0.5; l < box_size - 0.5; l += initial_dist_by_one_axis) {
                 if( count == N){
                     return; //it is not balanced grid but we can use it
                 }
@@ -68,8 +68,8 @@ void set_initial_state(dim *array, dim *velocity, dim *force) {
         }
     }
     if( count < N ){
-    	printf("error decrease initial_dist parameter, count is %ld  N is %ld \n", count, N);
-    	exit(1);
+        printf("error decrease initial_dist parameter, count is %ld  N is %ld \n", count, N);
+        exit(1);
     }
 }
 
@@ -103,12 +103,12 @@ double calculate_energy_force_lj(dim *array, dim *force){
         force[i] = { 0, 0, 0};
     }
     double energy = 0;
-    double force_x = 0;
-    double force_y = 0;
-    double force_z = 0;
-    #pragma omp parallel for reduction(+:energy,force_x,force_y,force_z) num_threads(NUM_THREADS)
+    #pragma omp parallel for reduction(+:energy) num_threads(NUM_THREADS)
     for (int i = 0; i < N; i++) {
-        dim *neighbors = (dim*)malloc(sizeof(dim) * N);
+        double force_x = 0;
+        double force_y = 0;
+        double force_z = 0;
+        dim neighbors[N] = (dim*)malloc(sizeof(dim) * N);
         int count_near = nearest_image(array, neighbors, N, i);
         for (int j = 0; j < count_near; j++) {
             double dist = square_dist(array[i], neighbors[j]);
@@ -122,10 +122,10 @@ double calculate_energy_force_lj(dim *array, dim *force){
             force_z += (neighbors[j].z - array[i].z)  * multiplier;
             energy += 4 * (1 / r12 - 1 / r6) - Urc;
         }
+        free(neighbors);
         force[i].x = force_x;
         force[i].y = force_y;
         force[i].z = force_z;
-        free(neighbors);
     }
     // now we consider each interaction twice, so we need to divide energy by 2
     return energy / 2;
@@ -135,7 +135,7 @@ void md(dim *array, dim *velocity, dim *force) {
     for (int n = 0; n < total_it; n ++){
         double total_energy = calculate_energy_force_lj(array, force);
         motion(array, velocity, force);
-        if (!(n % 500)) {
+        if (!(n % 10000)) {
             printf("energy is %f \n", total_energy/N);
         }
     }
