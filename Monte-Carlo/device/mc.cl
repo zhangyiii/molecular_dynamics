@@ -1,7 +1,6 @@
-#define size 32
+#define size 128
 #define rc 3
 
-__attribute__((num_simd_work_items(1)))
 __attribute__((num_compute_units(1)))
 __attribute__((reqd_work_group_size(size, 1, 1)))
 __kernel void mc(__global const float3 *restrict particles,

@@ -19,8 +19,8 @@
 #endif
 
 #define rc 3
-#define box_size 6
-#define N 32
+#define box_size 9
+#define N 128
 #define nmax 60000
 #define total_it 120000
 #define T 1.3
