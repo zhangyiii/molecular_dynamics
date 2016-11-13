@@ -7,13 +7,13 @@
 #include <string.h>
 
 #define rc 3
-#define box_size 9
-#define N 64
-#define total_it 100000
+#define box_size 6
+#define N 32
+#define total_it 20000
 #define dt 0.0005
 #define initial_dist_by_one_axis 1.5
 
-#define NUM_THREADS 2
+#define NUM_THREADS 4
 
 struct dim {
     double x;
@@ -108,7 +108,7 @@ double calculate_energy_force_lj(dim *array, dim *force){
         double force_x = 0;
         double force_y = 0;
         double force_z = 0;
-        dim neighbors[N] = (dim*)malloc(sizeof(dim) * N);
+        dim *neighbors = (dim*)malloc(sizeof(dim) * N);
         int count_near = nearest_image(array, neighbors, N, i);
         for (int j = 0; j < count_near; j++) {
             double dist = square_dist(array[i], neighbors[j]);
@@ -135,7 +135,7 @@ void md(dim *array, dim *velocity, dim *force) {
     for (int n = 0; n < total_it; n ++){
         double total_energy = calculate_energy_force_lj(array, force);
         motion(array, velocity, force);
-        if (!(n % 10000)) {
+        if (!(n % 1000)) {
             printf("energy is %f \n", total_energy/N);
         }
     }
