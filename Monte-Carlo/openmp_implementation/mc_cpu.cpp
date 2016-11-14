@@ -9,8 +9,8 @@
 #define rc 3
 #define box_size 6
 #define N 32
-#define nmax 60000
-#define total_it 120000
+#define nmax 30000
+#define total_it 60000
 #define T 1.3
 #define initial_dist_by_one_axis 1.2
 
@@ -51,9 +51,9 @@ int main()
 
 void set_initial_state(dim *array) {
     int count = 0;
-    for (double i = 1; i < box_size - 1; i += initial_dist_by_one_axis) {
-        for (double j = 1; j < box_size - 1; j += initial_dist_by_one_axis) {
-            for (double l = 1; l < box_size - 1; l += initial_dist_by_one_axis) {
+    for (double i = -(box_size - 1)/2; i < (box_size - 1)/2; i += initial_dist_by_one_axis) {
+        for (double j = -(box_size - 1)/2; j < (box_size - 1)/2; j += initial_dist_by_one_axis) {
+            for (double l = -(box_size - 1)/2; l < (box_size - 1)/2; l += initial_dist_by_one_axis) {
                 if( count == N){
                     return; //it is not balanced grid but we can use it
                 }
