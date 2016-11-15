@@ -19,10 +19,11 @@
 #endif
 
 #define rc 3
-#define box_size 9
-#define N 128
-#define nmax 60000
-#define total_it 120000
+#define box_size 16
+#define half_box 8
+#define N 1024
+#define nmax 30000
+#define total_it 60000
 #define T 1.3
 #define initial_dist_by_one_axis 1.2
 
@@ -33,11 +34,12 @@ cl_context context = NULL;
 cl_command_queue queue;
 cl_program program = NULL;
 cl_kernel kernel;
-cl_mem input_a_buf;
+cl_mem nearest_buf;
 cl_mem output_buf;
 
 // Problem data(positions and energy)
 cl_float3 input_a[N] = {};
+cl_float3 nearest[N] = {};
 float output[N] = {};
 float max_deviation = 0.005;
 double kernel_total_time = 0.;
@@ -48,6 +50,7 @@ void init_problem();
 void run();
 void cleanup();
 void mc();
+void nearest_image();
 float calculate_energy_lj();
 
 // Entry point.
@@ -151,7 +154,7 @@ bool init_opencl() {
     checkError(status, "Failed to create kernel");
 
     // Input buffer.
-    input_a_buf = clCreateBuffer(context, CL_MEM_READ_ONLY,
+    nearest_buf = clCreateBuffer(context, CL_MEM_READ_ONLY,
         N * sizeof(cl_float3), NULL, &status);
     checkError(status, "Failed to create buffer for input A");
 
@@ -166,9 +169,9 @@ bool init_opencl() {
 // Initialize the data for the problem. Requires num_devices to be known.
 void init_problem() {
     int count = 0;
-    for (double i = 1; i < box_size - 1; i += initial_dist_by_one_axis) {
-        for (double j = 1; j < box_size - 1; j += initial_dist_by_one_axis) {
-            for (double l = 1; l < box_size - 1; l += initial_dist_by_one_axis) {
+    for (double i = -(box_size - 1)/2; i < (box_size - 1)/2; i += initial_dist_by_one_axis) {
+        for (double j = -(box_size - 1)/2; j < (box_size - 1)/2; j += initial_dist_by_one_axis) {
+            for (double l = -(box_size - 1)/2; l < (box_size - 1)/2; l += initial_dist_by_one_axis) {
                 if( count == N){
                     return; //it is not balanced grid but we can use it
                 }
@@ -184,6 +187,7 @@ void init_problem() {
 }
 
 float calculate_energy_lj() {
+    nearest_image();
     memset(output, 0, sizeof(output));
     run();
     float total_energy = 0;
@@ -242,8 +246,8 @@ void run() {
     // clEnqueueWriteBuffer here is already aligned to ensure that DMA is used
     // for the host-to-device transfer.
     cl_event write_event;
-    status = clEnqueueWriteBuffer(queue, input_a_buf, CL_FALSE,
-        0, N * sizeof(cl_float3), input_a, 0, NULL, &write_event);
+    status = clEnqueueWriteBuffer(queue, nearest_buf, CL_FALSE,
+        0, N * sizeof(cl_float3), nearest, 0, NULL, &write_event);
     checkError(status, "Failed to transfer input A");
 
     // Set kernel arguments.
@@ -251,8 +255,8 @@ void run() {
 
     size_t global_work_size[1] = {N};
     size_t local_work_size[1] = {N};
-    status = clSetKernelArg(kernel, argi++, sizeof(cl_mem), &input_a_buf);
-    checkError(status, "Failed to set argument input_a");
+    status = clSetKernelArg(kernel, argi++, sizeof(cl_mem), &nearest_buf);
+    checkError(status, "Failed to set argument nearest");
 
     status = clSetKernelArg(kernel, argi++, sizeof(cl_mem), &output_buf);
     checkError(status, "Failed to set argument output");
@@ -281,6 +285,30 @@ void run() {
     clReleaseEvent(finish_event);
 }
 
+void nearest_image(){
+    for (int i = 0; i < N; i++){
+        float x,y,z;
+        if (input_a[i].x  > 0){
+            x = fmod(input_a[i].x + half_box, box_size) - half_box;
+        }
+        else{
+            x = fmod(input_a[i].x - half_box, box_size) + half_box;
+        }
+        if (input_a[i].y  > 0){
+            y = fmod(input_a[i].y + half_box, box_size) - half_box;
+        }
+        else{
+            y = fmod(input_a[i].y - half_box, box_size) + half_box;
+        }
+        if (input_a[i].z  > 0){
+            z = fmod(input_a[i].z + half_box, box_size) - half_box;
+        }
+        else{
+            z = fmod(input_a[i].z - half_box, box_size) + half_box;
+        }
+        nearest[i] = (cl_float3){ x, y, z};
+    }
+}
 // Free the resources allocated during initialization
 void cleanup() {
     if(kernel) {
@@ -289,8 +317,8 @@ void cleanup() {
     if(queue) {
       clReleaseCommandQueue(queue);
     }
-    if(input_a_buf) {
-      clReleaseMemObject(input_a_buf);
+    if(nearest_buf) {
+      clReleaseMemObject(nearest_buf);
     }
     if(output_buf) {
       clReleaseMemObject(output_buf);
