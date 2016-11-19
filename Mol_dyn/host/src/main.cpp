@@ -23,7 +23,7 @@
 #define N 32
 #define total_it 10000
 #define dt 0.0005
-#define initial_dist_by_one_axis 1.5
+#define initial_dist_by_one_axis 1.2
 
 // OpenCL runtime configuration
 cl_platform_id platform = NULL;
@@ -174,9 +174,9 @@ bool init_opencl() {
 // Initialize the data for the problem. Requires num_devices to be known.
 void init_problem() {
     int count = 0;
-    for (double i = 0.5; i < box_size - 0.5; i += initial_dist_by_one_axis) {
-        for (double j = 0.5; j < box_size - 0.5; j += initial_dist_by_one_axis) {
-            for (double l = 0.5; l < box_size - 0.5 ; l += initial_dist_by_one_axis) {
+    for (double i = -(box_size - 1)/2; i < (box_size - 1)/2; i += initial_dist_by_one_axis) {
+        for (double j = -(box_size - 1)/2; j < (box_size - 1)/2; j += initial_dist_by_one_axis) {
+            for (double l = -(box_size - 1)/2; l < (box_size - 1)/2; l += initial_dist_by_one_axis) {
                 if( count == N){
                     return; //it is not balanced grid but we can use it
                 }

@@ -8,10 +8,10 @@
 
 #define rc 3
 #define box_size 6
-#define N 32
+#define N 64
 #define total_it 20000
 #define dt 0.0005
-#define initial_dist_by_one_axis 1.5
+#define initial_dist_by_one_axis 1.2
 
 #define NUM_THREADS 4
 
@@ -54,9 +54,9 @@ int main()
 
 void set_initial_state(dim *array, dim *velocity, dim *force) {
     int count = 0;
-    for (double i = 0.5; i < box_size - 0.5; i += initial_dist_by_one_axis) {
-        for (double j = 0.5; j < box_size - 0.5; j += initial_dist_by_one_axis) {
-            for (double l = 0.5; l < box_size - 0.5; l += initial_dist_by_one_axis) {
+    for (double i = -(box_size - 1)/2; i < (box_size - 1)/2; i += initial_dist_by_one_axis) {
+        for (double j = -(box_size - 1)/2; j < (box_size - 1)/2; j += initial_dist_by_one_axis) {
+            for (double l = -(box_size - 1)/2; l < (box_size - 1)/2; l += initial_dist_by_one_axis) {
                 if( count == N){
                     return; //it is not balanced grid but we can use it
                 }
