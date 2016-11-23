@@ -3,31 +3,15 @@
 #include <math.h>
 #include "CL/opencl.h"
 #include <time.h>
+#include "parameters.h"
 #ifdef ALTERA
     #include "AOCL_Utils.h"
     using namespace aocl_utils;
-#else
-    #include <string.h>
-    #include "CL/cl.h"
-    #define MAX_PLATFORMS_COUNT 2
-    void checkError(cl_int err, const char *operation){
-        if (err != CL_SUCCESS){
-            fprintf(stderr, "Error during operation '%s': %d\n", operation, err);
-            exit(1);
-        }
-    }
+#endif
+#ifdef NVIDIA
+    #include "nvidia.h"
 #endif
 
-#define rc 3
-#define box_size 16
-#define half_box 8
-#define N 1024
-#define nmax 30000
-#define total_it 60000
-#define T 1.3
-#define initial_dist_by_one_axis 1.2
-
-// OpenCL runtime configuration
 cl_platform_id platform = NULL;
 cl_device_id device;
 cl_context context = NULL;
@@ -83,7 +67,8 @@ bool init_opencl() {
           return false;
         }
         platform = findPlatform("Altera");
-    #else
+    #endif
+    #ifdef NVIDIA
         cl_uint num_platforms;
         cl_platform_id pls[MAX_PLATFORMS_COUNT];
         clGetPlatformIDs(MAX_PLATFORMS_COUNT, pls, &num_platforms);
@@ -108,7 +93,8 @@ bool init_opencl() {
         devices.reset(getDevices(platform, CL_DEVICE_TYPE_ALL, &num_devices));
         // We'll just use the first device.
         device = devices[0];
-    #else
+    #endif
+    #ifdef NVIDIA
         cl_uint num_devices;
         clGetDeviceIDs(platform, CL_DEVICE_TYPE_GPU , 1, &device, &num_devices);
     #endif
@@ -123,7 +109,8 @@ bool init_opencl() {
         std::string binary_file = getBoardBinaryFile("mc", device);
         printf("Using AOCX: %s\n", binary_file.c_str());
         program = createProgramFromBinary(context, binary_file.c_str(), &device, 1);
-    #else
+    #endif
+    #ifdef NVIDIA
         int MAX_SOURCE_SIZE  = 65536;
         FILE *fp;
         const char fileName[] = "./device/mc.cl";
@@ -166,12 +153,11 @@ bool init_opencl() {
     return true;
 }
 
-// Initialize the data for the problem. Requires num_devices to be known.
 void init_problem() {
     int count = 0;
-    for (double i = -(box_size - 1)/2; i < (box_size - 1)/2; i += initial_dist_by_one_axis) {
-        for (double j = -(box_size - 1)/2; j < (box_size - 1)/2; j += initial_dist_by_one_axis) {
-            for (double l = -(box_size - 1)/2; l < (box_size - 1)/2; l += initial_dist_by_one_axis) {
+    for (double i = -(box_size - initial_dist_to_edge)/2; i < (box_size - initial_dist_to_edge)/2; i += initial_dist_by_one_axis) {
+        for (double j = -(box_size - initial_dist_to_edge)/2; j < (box_size - initial_dist_to_edge)/2; j += initial_dist_by_one_axis) {
+            for (double l = -(box_size - initial_dist_to_edge)/2; l < (box_size - initial_dist_to_edge)/2; l += initial_dist_by_one_axis) {
                 if( count == N){
                     return; //it is not balanced grid but we can use it
                 }
@@ -206,7 +192,7 @@ void mc() {
     printf("energy is %f\n", u1/N);
     while (1) {
         if ((good_iter == nmax) || (i == total_it)) {
-            printf("energy is %f \n", energy_ar[good_iter-1]/N);
+            printf("\nenergy is %f \ngood iters percent %f \n", energy_ar[good_iter-1]/N, (float)good_iter/(float)total_it);
             break;
         }
         cl_float3 tmp[N];
@@ -221,7 +207,7 @@ void mc() {
             input_a[particle].z = input_a[particle].z + ex;
         }
         double u2 = calculate_energy_lj();
-        double deltaU_div_T = (u1 - u2) / T;
+        double deltaU_div_T = (u1 - u2) / Temperature;
         double probability = exp(deltaU_div_T);
         double rand_0_1 = (double)rand() / (double)RAND_MAX;
         if ((u2 < u1) || (probability <= rand_0_1)) {
@@ -242,15 +228,12 @@ void run() {
     cl_event finish_event;
     cl_ulong time_start, time_end;
     double total_time;
-    // Each of the host buffers supplied to
-    // clEnqueueWriteBuffer here is already aligned to ensure that DMA is used
-    // for the host-to-device transfer.
+
     cl_event write_event;
     status = clEnqueueWriteBuffer(queue, nearest_buf, CL_FALSE,
         0, N * sizeof(cl_float3), nearest, 0, NULL, &write_event);
     checkError(status, "Failed to transfer input A");
 
-    // Set kernel arguments.
     unsigned argi = 0;
 
     size_t global_work_size[1] = {N};
@@ -265,7 +248,6 @@ void run() {
         global_work_size, local_work_size, 1, &write_event, &kernel_event);
     checkError(status, "Failed to launch kernel");
 
-    // Read the result. This the final operation.
     status = clEnqueueReadBuffer(queue, output_buf, CL_FALSE,
         0, N * sizeof(float), output, 1, &kernel_event, &finish_event);
 

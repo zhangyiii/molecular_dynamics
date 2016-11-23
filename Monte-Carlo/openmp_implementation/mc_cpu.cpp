@@ -5,14 +5,7 @@
 #include <time.h>
 #include <omp.h>
 #include <string.h>
-
-#define rc 3
-#define box_size 6
-#define N 32
-#define nmax 30000
-#define total_it 60000
-#define T 1.3
-#define initial_dist_by_one_axis 1.2
+#include "parameters.h"
 
 #define NUM_THREADS 8
 
@@ -51,9 +44,9 @@ int main()
 
 void set_initial_state(dim *array) {
     int count = 0;
-    for (double i = -(box_size - 1)/2; i < (box_size - 1)/2; i += initial_dist_by_one_axis) {
-        for (double j = -(box_size - 1)/2; j < (box_size - 1)/2; j += initial_dist_by_one_axis) {
-            for (double l = -(box_size - 1)/2; l < (box_size - 1)/2; l += initial_dist_by_one_axis) {
+    for (double i = -(box_size - initial_dist_to_edge)/2; i < (box_size - initial_dist_to_edge)/2; i += initial_dist_by_one_axis) {
+        for (double j = -(box_size - initial_dist_to_edge)/2; j < (box_size - initial_dist_to_edge)/2; j += initial_dist_by_one_axis) {
+            for (double l = -(box_size - initial_dist_to_edge)/2; l < (box_size - initial_dist_to_edge)/2; l += initial_dist_by_one_axis) {
                 if( count == N){
                     return; //it is not balanced grid but we can use it
                 }
@@ -134,7 +127,7 @@ void mc_method(dim *array) {
             tmp[particle].z = tmp[particle].z + ex;
         }
         double u2 = calculate_energy_lj(tmp);
-        double deltaU_div_T = (u1 - u2) / T;
+        double deltaU_div_T = (u1 - u2) / Temperature;
         double probability = exp(deltaU_div_T);
         double rand_0_1 = (double)rand() / (double)RAND_MAX;
         if ((u2 < u1) || (probability <= rand_0_1)) {

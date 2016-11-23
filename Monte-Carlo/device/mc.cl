@@ -1,16 +1,13 @@
-#define size 1024
-#define rc 3
-#define box_size 16
-#define half_box 8
+#include "parameters.h"
 
-__attribute__((reqd_work_group_size(size, 1, 1)))
+__attribute__((reqd_work_group_size(N, 1, 1)))
 __kernel void mc(__global const float3 *restrict particles,
                  __global float *restrict out) {
 
     int index = get_global_id(0);
     float energy = 0;
-    #pragma unroll 6
-    for (int i = 0; i < size; i++) {
+    #pragma unroll 8
+    for (int i = 0; i < N; i++) {
         float x = particles[i].x - particles[index].x;
         float y = particles[i].y - particles[index].y;
         float z = particles[i].z - particles[index].z;
