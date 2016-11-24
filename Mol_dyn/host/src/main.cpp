@@ -3,27 +3,14 @@
 #include <math.h>
 #include "CL/opencl.h"
 #include <time.h>
+#include "parameters.h"
 #ifdef ALTERA
     #include "AOCL_Utils.h"
     using namespace aocl_utils;
-#else
-    #include <string.h>
-    #include "CL/cl.h"
-    #define MAX_PLATFORMS_COUNT 2
-    void checkError(cl_int err, const char *operation){
-        if (err != CL_SUCCESS){
-            fprintf(stderr, "Error during operation '%s': %d\n", operation, err);
-            exit(1);
-        }
-    }
 #endif
-
-#define rc 3
-#define box_size 7
-#define N 32
-#define total_it 10000
-#define dt 0.0005
-#define initial_dist_by_one_axis 1.2
+#ifdef NVIDIA
+    #include "nvidia.h"
+#endif
 
 // OpenCL runtime configuration
 cl_platform_id platform = NULL;
@@ -32,25 +19,26 @@ cl_context context = NULL;
 cl_command_queue queue;
 cl_program program = NULL;
 cl_kernel kernel;
-cl_mem input_a_buf;
+cl_mem nearest_buf;
 cl_mem output_energy_buf;
 cl_mem output_force_buf;
 
 // Problem data.
 cl_float3 input_a[N] = {};
+cl_float3 nearest[N] = {};
 cl_float3 velocity[N] = {};
-//AFAIK it's imposible to pass 2d array to the kernel
+
 float output_energy[N] = {};
 cl_float3 output_force[N] = {};
 double kernel_total_time = 0.;
 
-// Function prototypes
 bool init_opencl();
 void init_problem();
 void run();
 void cleanup();
 void md();
 void motion();
+void nearest_image();
 void calculate_energy_force_lj();
 
 // Entry point.
@@ -83,7 +71,8 @@ bool init_opencl() {
           return false;
         }
         platform = findPlatform("Altera");
-    #else
+    #endif
+    #ifdef NVIDIA
         cl_uint num_platforms;
         cl_platform_id pls[MAX_PLATFORMS_COUNT];
         clGetPlatformIDs(MAX_PLATFORMS_COUNT, pls, &num_platforms);
@@ -108,7 +97,8 @@ bool init_opencl() {
         devices.reset(getDevices(platform, CL_DEVICE_TYPE_ALL, &num_devices));
         // We'll just use the first device.
         device = devices[0];
-    #else
+    #endif
+    #ifdef NVIDIA
         cl_uint num_devices;
         clGetDeviceIDs(platform, CL_DEVICE_TYPE_GPU , 1, &device, &num_devices);
     #endif
@@ -124,7 +114,8 @@ bool init_opencl() {
         std::string binary_file = getBoardBinaryFile("md", device);
         printf("Using AOCX: %s\n", binary_file.c_str());
         program = createProgramFromBinary(context, binary_file.c_str(), &device, 1);
-    #else
+    #endif
+    #ifdef NVIDIA
         int MAX_SOURCE_SIZE  = 65536;
         FILE *fp;
         const char fileName[] = "./device/md.cl";
@@ -155,7 +146,7 @@ bool init_opencl() {
     checkError(status, "Failed to create kernel");
 
     // Input buffer.
-    input_a_buf = clCreateBuffer(context, CL_MEM_READ_ONLY,
+    nearest_buf = clCreateBuffer(context, CL_MEM_READ_ONLY,
         N * sizeof(cl_float3), NULL, &status);
     checkError(status, "Failed to create buffer for input A");
 
@@ -174,9 +165,9 @@ bool init_opencl() {
 // Initialize the data for the problem. Requires num_devices to be known.
 void init_problem() {
     int count = 0;
-    for (double i = -(box_size - 1)/2; i < (box_size - 1)/2; i += initial_dist_by_one_axis) {
-        for (double j = -(box_size - 1)/2; j < (box_size - 1)/2; j += initial_dist_by_one_axis) {
-            for (double l = -(box_size - 1)/2; l < (box_size - 1)/2; l += initial_dist_by_one_axis) {
+    for (double i = -(box_size - initial_dist_to_edge)/2; i < (box_size - initial_dist_to_edge)/2; i += initial_dist_by_one_axis) {
+        for (double j = -(box_size - initial_dist_to_edge)/2; j < (box_size - initial_dist_to_edge)/2; j += initial_dist_by_one_axis) {
+            for (double l = -(box_size - initial_dist_to_edge)/2; l < (box_size - initial_dist_to_edge)/2; l += initial_dist_by_one_axis) {
                 if( count == N){
                     return; //it is not balanced grid but we can use it
                 }
@@ -193,9 +184,11 @@ void init_problem() {
 }
 
 void calculate_energy_force_lj() {
-    memset(output_energy, 0, sizeof(output_energy));
-    for (int i = 0; i < N; i++)
+    nearest_image();
+    for (int i = 0; i < N; i++){
         output_force[i] = (cl_float3){0, 0, 0};
+        output_energy[i] = 0;
+    }
     run();
 }
 
@@ -203,12 +196,12 @@ void md() {
     for (int n = 0; n < total_it; n ++){
         calculate_energy_force_lj();
         motion();
-        float total_energy = 0;
-        if (!(n % 500)) {
-            for (unsigned i = 0; i < N; i++)
+        if (!(n % 500)){
+            float total_energy = 0;
+            for (int i = 0; i < N; i++)
                 total_energy+=output_energy[i];
             total_energy/=(2 * N);
-            printf("energy is %f \n", total_energy);
+                printf("energy is %f \n",total_energy);
         }
     }
 }
@@ -225,8 +218,8 @@ void run() {
     // clEnqueueWriteBuffer here is already aligned to ensure that DMA is used
     // for the host-to-device transfer.
     cl_event write_event;
-    status = clEnqueueWriteBuffer(queue, input_a_buf, CL_FALSE,
-        0, N * sizeof(cl_float3), input_a, 0, NULL, &write_event);
+    status = clEnqueueWriteBuffer(queue, nearest_buf, CL_FALSE,
+        0, N * sizeof(cl_float3), nearest, 0, NULL, &write_event);
     checkError(status, "Failed to transfer input A");
 
     // Set kernel arguments.
@@ -234,7 +227,7 @@ void run() {
 
     size_t global_work_size[1] = {N};
     size_t local_work_size[1] = {N};
-    status = clSetKernelArg(kernel, argi++, sizeof(cl_mem), &input_a_buf);
+    status = clSetKernelArg(kernel, argi++, sizeof(cl_mem), &nearest_buf);
     checkError(status, "Failed to set argument input_a");
 
     status = clSetKernelArg(kernel, argi++, sizeof(cl_mem), &output_energy_buf);
@@ -271,6 +264,10 @@ void run() {
 }
 
 void motion(){
+    double total_energy = 0;
+    for (int i = 0; i < N; i++)
+            total_energy+=output_energy[i];
+        total_energy/=(2 * N);
     for (int i = 0; i < N; i++) {
         velocity[i] = (cl_float3) {velocity[i].x + output_force[i].x * dt,
             velocity[i].y + output_force[i].y * dt,
@@ -279,7 +276,34 @@ void motion(){
             input_a[i].y + velocity[i].y * dt,
             input_a[i].z + velocity[i].z * dt};
     }
+
 }
+
+void nearest_image(){
+    for (int i = 0; i < N; i++){
+        float x,y,z;
+        if (input_a[i].x  > 0){
+            x = fmod(input_a[i].x + half_box, box_size) - half_box;
+        }
+        else{
+            x = fmod(input_a[i].x - half_box, box_size) + half_box;
+        }
+        if (input_a[i].y  > 0){
+            y = fmod(input_a[i].y + half_box, box_size) - half_box;
+        }
+        else{
+            y = fmod(input_a[i].y - half_box, box_size) + half_box;
+        }
+        if (input_a[i].z  > 0){
+            z = fmod(input_a[i].z + half_box, box_size) - half_box;
+        }
+        else{
+            z = fmod(input_a[i].z - half_box, box_size) + half_box;
+        }
+        nearest[i] = (cl_float3){ x, y, z};
+    }
+}
+
 // Free the resources allocated during initialization
 void cleanup() {
     if(kernel) {
@@ -288,8 +312,8 @@ void cleanup() {
     if(queue) {
       clReleaseCommandQueue(queue);
     }
-    if(input_a_buf) {
-      clReleaseMemObject(input_a_buf);
+    if(nearest_buf) {
+      clReleaseMemObject(nearest_buf);
     }
     if(output_energy_buf) {
       clReleaseMemObject(output_energy_buf);

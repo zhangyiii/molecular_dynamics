@@ -1,23 +1,39 @@
-#define size 32
-#define rc 3
+#include "parameters.h"
 
-__attribute__((num_simd_work_items(1)))
-__attribute__((num_compute_units(1)))
-__attribute__((reqd_work_group_size(size, 1, 1)))
+__attribute__((reqd_work_group_size(N, 1, 1)))
 __kernel void md(__global const float3 *restrict particles,
                  __global float *restrict out_energy,
                  __global float3 *restrict out_force) {
 
     int index = get_global_id(0);
     float energy = 0;
-    float3 force = 0;
+    float3 force = (float3)(0, 0, 0);
     #pragma unroll 4
-    for (int i = 0; i < size; i++) {
-        float3 r = (float3)((particles[index].x - particles[i].x),
-            (particles[index].y - particles[i].y),
-            (particles[index].z - particles[i].z));
-        float sq_dist = r.x * r.x + r.y * r.y + r.z * r.z;
-        if ((sq_dist < rc * rc) && (i != index)) {
+    for (int i = 0; i < N; i++) {
+        float x = particles[i].x - particles[index].x;
+        float y = particles[i].y - particles[index].y;
+        float z = particles[i].z - particles[index].z;
+        if (x > half_box)
+            x -= box_size;
+        else{
+            if (x < -half_box)
+                x += box_size;
+        }
+        if (y > half_box)
+            y -= box_size;
+        else{
+            if (y < -half_box)
+                y += box_size;
+        }
+        if (z > half_box)
+            z -= box_size;
+        else{
+            if (z < -half_box)
+                z += box_size;
+        }
+        float3 r = (float3)(x, y, z);
+        float sq_dist = x * x + y * y + z * z;
+        if ((sq_dist < (rc * rc)) && (i != index)) {
             float r6 = sq_dist * sq_dist * sq_dist;
             float r12 = r6 * r6;
             float r8 = r6 * sq_dist;
